@@ -85,6 +85,11 @@ export default function PollWidget() {
   const currentQVoted = votedQuestions[String(currentQ)] ?? [];
   const hasVotedCurrentQ = currentQVoted.length > 0;
 
+  // Clear vote error when question changes
+  useEffect(() => {
+    setVoteError("");
+  }, [currentQ]);
+
   // Initialize from props
   useEffect(() => {
     if (!isPending) {
@@ -125,8 +130,8 @@ export default function PollWidget() {
         questionIndex: currentQ,
         option,
         voterName: props.voterName || "Anonymous",
-      });
-      const data = result?.structuredContent as {
+      } as any);
+      const data = (result?.structuredContent as unknown) as {
         success: boolean;
         votes?: Record<string, Record<string, string[]>>;
         message?: string;
@@ -150,7 +155,7 @@ export default function PollWidget() {
   };
 
   const handleNext = async () => {
-    await advanceQuestion({ appId: props.appId }).catch(() => {});
+    await advanceQuestion({ appId: props.appId ?? "" }).catch(() => {});
   };
 
   const copyCode = () => {

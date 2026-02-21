@@ -67,6 +67,10 @@ export const widgetMetadata: WidgetMetadata = {
 
 type Props = z.infer<typeof propsSchema>;
 
+type AppViewerState = {
+  confirmedName: string | null;
+};
+
 type AppStateResult = {
   found: boolean;
   appType?: string;
@@ -99,6 +103,61 @@ function pct(qVotes: Record<string, string[]>, option: string): number {
   return total === 0 ? 0 : Math.round(((qVotes[option]?.length ?? 0) / total) * 100);
 }
 
+// ─── Name Entry ─────────────────────────────────────────────────────────────────
+
+function NameEntry({
+  defaultName,
+  appType,
+  title,
+  appId,
+  onConfirm,
+}: {
+  defaultName: string;
+  appType: "poll" | "quiz";
+  title: string;
+  appId: string;
+  onConfirm: (name: string) => void;
+}) {
+  const [name, setName] = useState(defaultName || "");
+
+  const handleSubmit = () => {
+    const trimmed = name.trim();
+    if (trimmed) onConfirm(trimmed);
+  };
+
+  return (
+    <div className="bg-surface-elevated border border-default rounded-3xl overflow-hidden">
+      <div className="px-6 pt-8 pb-4 text-center">
+        <div className="text-4xl mb-3">{appType === "poll" ? "📊" : "🧠"}</div>
+        <h2 className="text-xl font-bold text-default">{title || (appType === "poll" ? "Live Poll" : "Quiz")}</h2>
+        <p className="text-sm text-secondary mt-1">
+          Code: <span className="font-mono font-bold text-info">#{appId}</span>
+        </p>
+      </div>
+      <div className="px-6 pb-6">
+        <label className="block text-sm font-semibold text-default mb-2">What's your name?</label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+          placeholder="Enter your name..."
+          maxLength={20}
+          autoFocus
+          className="w-full px-4 py-3 rounded-xl border border-default bg-surface text-default text-base placeholder:text-secondary/50 focus:outline-none focus:ring-2 focus:ring-info/40 focus:border-info transition-all"
+        />
+        <button
+          onClick={handleSubmit}
+          disabled={!name.trim()}
+          className="w-full mt-3 py-3.5 rounded-xl bg-info text-white font-bold text-base hover:opacity-90 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Join {appType === "poll" ? "Poll" : "Quiz"} →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Poll View ─────────────────────────────────────────────────────────────────
 
 function PollView({
@@ -121,6 +180,11 @@ function PollView({
 
   const currentQVoted = votedQuestions[String(currentQ)] ?? [];
   const hasVotedCurrentQ = currentQVoted.length > 0;
+
+  // Clear vote error when question changes
+  useEffect(() => {
+    setVoteError("");
+  }, [currentQ]);
 
   // Poll for live updates
   useEffect(() => {
@@ -149,8 +213,8 @@ function PollView({
         questionIndex: currentQ,
         option,
         voterName: props.playerName || "Anonymous",
-      });
-      const data = result?.structuredContent as {
+      } as any);
+      const data = (result?.structuredContent as unknown) as {
         success: boolean;
         votes?: Record<string, Record<string, string[]>>;
         message?: string;
@@ -363,6 +427,12 @@ function QuizView({ props, sendFollowUpMessage }: { props: Props; sendFollowUpMe
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const questions = props.quizQuestions;
+
+  // Reset answer state when question changes (for all players, not just host)
+  useEffect(() => {
+    setSelectedAnswer(null);
+    setLastPoints(null);
+  }, [currentQ]);
 
   useEffect(() => {
     const poll = async () => {
@@ -624,7 +694,7 @@ function QuizView({ props, sendFollowUpMessage }: { props: Props; sendFollowUpMe
 // ─── Main widget ───────────────────────────────────────────────────────────────
 
 export default function AppViewer() {
-  const { props, isPending, sendFollowUpMessage } = useWidget<Props>();
+  const { props, isPending, state, setState, sendFollowUpMessage } = useWidget<Props, AppViewerState>();
 
   if (isPending) {
     return (
@@ -644,12 +714,30 @@ export default function AppViewer() {
     );
   }
 
+  // Show name entry before the game
+  if (!state?.confirmedName) {
+    return (
+      <McpUseProvider autoSize>
+        <NameEntry
+          defaultName={props.playerName}
+          appType={props.appType}
+          title={props.appType === "poll" ? props.title : props.quizTitle}
+          appId={props.appId}
+          onConfirm={(name) => setState({ confirmedName: name })}
+        />
+      </McpUseProvider>
+    );
+  }
+
+  // Override playerName with the user-entered name
+  const gameProps = { ...props, playerName: state.confirmedName };
+
   return (
     <McpUseProvider autoSize>
       {props.appType === "poll" ? (
-        <PollView props={props} sendFollowUpMessage={sendFollowUpMessage} />
+        <PollView props={gameProps} sendFollowUpMessage={sendFollowUpMessage} />
       ) : (
-        <QuizView props={props} sendFollowUpMessage={sendFollowUpMessage} />
+        <QuizView props={gameProps} sendFollowUpMessage={sendFollowUpMessage} />
       )}
     </McpUseProvider>
   );
