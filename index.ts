@@ -25,7 +25,7 @@ const server = new MCPServer({
   title: "FlexPlay",
   version: "1.0.0",
   description:
-    "Generate live multiplayer polls and quizzes inside ChatGPT. Share a code, everyone plays together in real-time.",
+    "Create live multiplayer polls and quizzes. Share a 6-character code so anyone can join and play together in real-time. Works with any AI assistant (ChatGPT, Claude, etc).",
   baseUrl,
   favicon: "favicon.ico",
   icons: [{ src: "icon.svg", mimeType: "image/svg+xml", sizes: ["512x512"] }],
@@ -117,7 +117,7 @@ server.tool(
   {
     name: "create-poll",
     description:
-      "Create a live multiplayer poll with one or many questions. ChatGPT can generate multiple questions at once (e.g. 'make a 10-question poll about YCombinator'). Share the code so others can vote on each question live.",
+      "Create a live multiplayer poll with one or many questions. Generate multiple questions at once (e.g. 'make a 10-question poll about YCombinator'). Share the code so others can join and vote on each question live.",
     schema: z.object({
       title: z.string().describe("Poll title (e.g. 'YCombinator Trivia')"),
       questions: z
@@ -183,7 +183,21 @@ server.tool(
         voterName: "Host",
       },
       output: text(
-        `Poll "${title}" created with ${questions.length} question(s)!\nShare code: **${appId}**\n\nOthers can join by saying: "Join app ${appId} as [their name]"`
+        [
+          `Poll "${title}" created with ${questions.length} question(s)!`,
+          `Share code: **${appId}**`,
+          ``,
+          `Others can join by saying: "Join game ${appId} as [their name]"`,
+          ``,
+          `--- Current Question (1/${questions.length}) ---`,
+          `${questions[0].question}`,
+          ...questions[0].options.map((opt, i) => `  ${i + 1}. ${opt}`),
+          ``,
+          `You are the host. Use "next-question" to advance after voting.`,
+          questions.length > 1
+            ? `All questions: ${questions.map((q, i) => `\nQ${i + 1}: ${q.question} (${q.options.join(", ")})`).join("")}`
+            : "",
+        ].filter(Boolean).join("\n")
       ),
     });
   }
@@ -278,7 +292,16 @@ server.tool(
         isHost: true,
       },
       output: text(
-        `Quiz "${title}" created with ${questions.length} question(s)!\nShare code: **${appId}**\nWaiting for players to join...\n\nOthers can join by saying: "Join app ${appId} as [their name]"`
+        [
+          `Quiz "${title}" created with ${questions.length} question(s)!`,
+          `Share code: **${appId}**`,
+          `Phase: Lobby — waiting for players to join.`,
+          ``,
+          `Others can join by saying: "Join game ${appId} as [their name]"`,
+          ``,
+          `You are the host. Once players have joined, use "start-quiz" to begin.`,
+          `Then use "next-question" to reveal answers and advance through questions.`,
+        ].join("\n")
       ),
     });
   }
@@ -290,7 +313,7 @@ server.tool(
   {
     name: "join-app",
     description:
-      "Join an existing poll or quiz using a share code. Shows the live interactive widget.",
+      "Join an existing poll or quiz using a share code. Returns the current game state so the player can participate.",
     schema: z.object({
       appId: z
         .string()
@@ -340,7 +363,16 @@ server.tool(
           players: {},
         },
         output: text(
-          `Joined poll "${app.spec.title}" as ${playerName}! Cast your vote below.`
+          [
+            `Joined poll "${app.spec.title}" as ${playerName}!`,
+            `Player ID: ${playerId}`,
+            ``,
+            `--- Q${app.state.currentQuestion + 1}/${app.spec.questions.length}: ${app.spec.questions[app.state.currentQuestion].question} ---`,
+            ...app.spec.questions[app.state.currentQuestion].options.map((opt, i) => `  ${i + 1}. ${opt}`),
+            ``,
+            `Phase: ${app.state.phase}`,
+            `Vote by telling me which option you choose, or use "cast-vote" with the option text.`,
+          ].join("\n")
         ),
       });
     }
@@ -374,7 +406,16 @@ server.tool(
         players: app.state.players,
       },
       output: text(
-        `Joined quiz "${app.spec.title}" as ${playerName}!\nWaiting for the host to start...`
+        [
+          `Joined quiz "${app.spec.title}" as ${playerName}!`,
+          `Player ID: ${playerId}`,
+          `Phase: ${app.state.phase}`,
+          `Players in lobby: ${Object.values(app.state.players).join(", ") || "none yet"}`,
+          ``,
+          app.state.phase === "lobby"
+            ? `Waiting for the host to start the quiz...`
+            : `Quiz is in progress! Use "get-app-state" to see the current question.`,
+        ].join("\n")
       ),
     });
   }
@@ -386,7 +427,7 @@ server.tool(
   {
     name: "get-app-state",
     description:
-      "Get the current live state of a poll or quiz app. Used by widgets to stay in sync.",
+      "Get the current live state of a poll or quiz. Returns the current question, phase, votes/answers, and scores. Use this to check for updates or present the current state to the user.",
     schema: z.object({
       appId: z.string().describe("The app share code"),
     }),
@@ -713,6 +754,65 @@ server.tool(
 
     return object({ success: false, message: `Cannot advance from phase: ${state.phase}`, phase: state.phase, currentQuestion: state.currentQuestion });
   }
+);
+
+// ─── Prompt: game host instructions ──────────────────────────────────────────
+
+server.prompt(
+  {
+    name: "flexplay-instructions",
+    description:
+      "Instructions for hosting FlexPlay polls and quizzes. Load this to understand how to create, manage, and play games.",
+  },
+  async () => ({
+    messages: [
+      {
+        role: "user" as const,
+        content: {
+          type: "text" as const,
+          text: `You are a FlexPlay game host. Here's how to run polls and quizzes:
+
+## Creating Games
+- **Poll**: Use "create-poll" with a title and array of questions (each with options). You can generate 1-20 questions on any topic.
+- **Quiz**: Use "create-quiz" with a title and questions (each with options, correctIndex, and timeLimit).
+
+## Game Flow
+
+### Poll: voting → results → next question → ... → ended
+1. Create poll → share the 6-character code
+2. Others join with "join-app" using the code
+3. Present the current question and options to the user
+4. User tells you their choice → you call "cast-vote" with their option
+5. Use "next-question" to show results, then again to advance to next question
+6. After all questions, poll ends with a summary
+
+### Quiz: lobby → question → reveal → ... → ended
+1. Create quiz → share the code
+2. Others join with "join-app"
+3. Host uses "start-quiz" to begin
+4. Present the question and options (numbered) to the user
+5. User tells you their answer → you call "submit-quiz-answer" with the answerIndex
+6. Host uses "next-question" to reveal the correct answer, then again for next question
+7. After all questions, quiz ends with final scores
+
+## For Text-Based Clients (no widget)
+When the user can't see widgets, YOU must:
+- Present questions and options clearly (numbered list)
+- Accept the user's vote/answer as natural language ("I pick option 2" or "Paris")
+- Call the appropriate tool (cast-vote or submit-quiz-answer)
+- Use "get-app-state" to check for live updates and report them
+- Announce results, scores, and winners
+
+## Key Details
+- Share codes are 6 characters (e.g. ABC123)
+- Poll votes use the option TEXT (not index)
+- Quiz answers use the option INDEX (0-based)
+- "next-question" works for both polls and quizzes
+- Anyone can call "get-app-state" to see current state`,
+        },
+      },
+    ],
+  })
 );
 
 // ─── Start ────────────────────────────────────────────────────────────────────
