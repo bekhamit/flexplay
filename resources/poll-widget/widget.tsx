@@ -155,7 +155,14 @@ export default function PollWidget() {
   };
 
   const handleNext = async () => {
-    await advanceQuestion({ appId: props.appId ?? "" }).catch(() => {});
+    try {
+      const result = await advanceQuestion({ appId: props.appId ?? "" });
+      const data = result?.structuredContent as { success?: boolean; phase?: string; currentQuestion?: number } | undefined;
+      if (data?.success) {
+        if (data.phase) setPhase(data.phase);
+        if (data.currentQuestion !== undefined) setCurrentQ(data.currentQuestion);
+      }
+    } catch { /* silent */ }
   };
 
   const copyCode = () => {
@@ -190,6 +197,53 @@ export default function PollWidget() {
   const total = totalVotesForQ(qVotes);
   const showResults = hasVotedCurrentQ || props.isHost || phase === "results" || phase === "ended";
   const totalQuestions = props.questions.length;
+
+  // ── WAITING (lobby) ──
+  if (phase === "waiting") {
+    return (
+      <McpUseProvider autoSize>
+        <div className="bg-surface-elevated border border-default rounded-3xl overflow-hidden">
+          <div className="px-6 pt-6 pb-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold uppercase tracking-widest text-secondary">
+                Poll Lobby
+              </span>
+              <button
+                onClick={copyCode}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-default text-xs font-mono font-semibold text-secondary hover:bg-default/5 transition-colors cursor-pointer"
+              >
+                <span className="text-info">#{props.appId}</span>
+                <span>{copied ? "✓ Copied" : "Copy code"}</span>
+              </button>
+            </div>
+            <h2 className="text-2xl font-bold text-default">{props.title}</h2>
+            <p className="text-sm text-secondary mt-1">
+              {totalQuestions} question{totalQuestions !== 1 ? "s" : ""} ready
+            </p>
+          </div>
+          <div className="px-6 pb-4">
+            <div className="bg-default/5 rounded-2xl p-4 text-center">
+              <p className="text-sm text-secondary">
+                Share code <span className="font-mono font-bold text-info text-base">#{props.appId}</span> to invite players
+              </p>
+              <p className="text-xs text-secondary mt-2 animate-pulse">Waiting for players to join...</p>
+            </div>
+          </div>
+          {props.isHost && (
+            <div className="px-6 pb-6">
+              <button
+                onClick={handleNext}
+                disabled={isAdvancing}
+                className="w-full py-4 rounded-2xl bg-info text-white font-bold text-lg transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+              >
+                {isAdvancing ? "Starting..." : "Start Poll →"}
+              </button>
+            </div>
+          )}
+        </div>
+      </McpUseProvider>
+    );
+  }
 
   // ── ENDED ──
   if (phase === "ended") {

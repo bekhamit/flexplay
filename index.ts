@@ -62,7 +62,7 @@ type PollVotesMap = Record<string, Record<string, string[]>>;
 
 type EventEntry = { type: string; data: unknown; timestamp: number };
 
-type PollPhase = "voting" | "results" | "ended";
+type PollPhase = "waiting" | "voting" | "results" | "ended";
 
 type PollApp = {
   appId: string;
@@ -161,7 +161,7 @@ server.tool(
       appId,
       appType: "poll",
       spec: { title, questions, multiChoice },
-      state: { currentQuestion: 0, phase: "voting", votes, hostId },
+      state: { currentQuestion: 0, phase: "waiting", votes, hostId },
       events: [],
       createdAt: Date.now(),
     };
@@ -176,7 +176,7 @@ server.tool(
         questions,
         multiChoice,
         currentQuestion: 0,
-        phase: "voting",
+        phase: "waiting",
         votes,
         isHost: true,
         voterId: hostId,
@@ -193,7 +193,7 @@ server.tool(
           `${questions[0].question}`,
           ...questions[0].options.map((opt, i) => `  ${i + 1}. ${opt}`),
           ``,
-          `You are the host. Use "next-question" to advance after voting.`,
+          `You are the host. Use "next-question" to start voting, then to show results and advance.`,
           questions.length > 1
             ? `All questions: ${questions.map((q, i) => `\nQ${i + 1}: ${q.question} (${q.options.join(", ")})`).join("")}`
             : "",
@@ -434,7 +434,7 @@ server.tool(
     outputSchema: z.object({
       found: z.boolean(),
       appType: z.enum(["poll", "quiz"]).optional(),
-      votes: z.record(z.string(), z.array(z.string())).optional(),
+      votes: z.record(z.string(), z.record(z.string(), z.array(z.string()))).optional(),
       phase: z.string().optional(),
       currentQuestion: z.number().optional(),
       questionStartTime: z.number().nullable().optional(),
@@ -690,9 +690,15 @@ server.tool(
       return object({ success: false, message: "App not found", phase: "error", currentQuestion: 0 });
     }
 
-    // ── Poll flow: voting → results → next voting → ... → ended ──
+    // ── Poll flow: waiting → voting → results → next voting → ... → ended ──
     if (app.appType === "poll") {
       const { state, spec } = app;
+
+      if (state.phase === "waiting") {
+        state.phase = "voting";
+        addEvent(app, "poll_started", { questionIndex: 0 });
+        return object({ success: true, message: "Poll started! Voting is open.", phase: "voting", currentQuestion: 0 });
+      }
 
       if (state.phase === "voting") {
         state.phase = "results";

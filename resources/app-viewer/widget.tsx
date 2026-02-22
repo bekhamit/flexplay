@@ -237,7 +237,14 @@ function PollView({
   };
 
   const handleNext = async () => {
-    await advanceQuestion({ appId: props.appId }).catch(() => {});
+    try {
+      const result = await advanceQuestion({ appId: props.appId });
+      const data = result?.structuredContent as { success?: boolean; phase?: string; currentQuestion?: number } | undefined;
+      if (data?.success) {
+        if (data.phase) setPhase(data.phase);
+        if (data.currentQuestion !== undefined) setCurrentQ(data.currentQuestion);
+      }
+    } catch { /* silent */ }
   };
 
   const copyCode = () => {
@@ -254,6 +261,26 @@ function PollView({
   const total = totalVotesForQ(qVotes);
   const totalQuestions = props.questions.length;
   const showResults = hasVotedCurrentQ || phase === "results" || phase === "ended";
+
+  // ── WAITING ──
+  if (phase === "waiting") {
+    return (
+      <div className="bg-surface-elevated border border-default rounded-3xl overflow-hidden">
+        <div className="px-6 pt-6 pb-4 text-center">
+          <div className="text-4xl mb-3">📊</div>
+          <h2 className="text-xl font-bold text-default">{props.title}</h2>
+          <p className="text-sm text-secondary mt-1">
+            {totalQuestions} question{totalQuestions !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <div className="px-6 pb-6">
+          <div className="text-center py-4 text-secondary text-sm animate-pulse">
+            Waiting for host to start the poll...
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── ENDED ──
   if (phase === "ended") {
@@ -500,7 +527,14 @@ function QuizView({ props, sendFollowUpMessage }: { props: Props; sendFollowUpMe
   };
 
   const handleNext = async () => {
-    await nextQuestion({ appId: props.appId }).catch(() => {});
+    try {
+      const result = await nextQuestion({ appId: props.appId });
+      const data = result?.structuredContent as { success?: boolean; phase?: string; currentQuestion?: number } | undefined;
+      if (data?.success) {
+        if (data.phase) setPhase(data.phase);
+        if (data.currentQuestion !== undefined) setCurrentQ(data.currentQuestion);
+      }
+    } catch { /* silent */ }
     setSelectedAnswer(null);
     setLastPoints(null);
   };
