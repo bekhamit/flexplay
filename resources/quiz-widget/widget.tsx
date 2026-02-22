@@ -273,12 +273,7 @@ export default function QuizWidget() {
 
   const handleNext = async () => {
     try {
-      const result = await nextQuestion({ appId: props.appId });
-      const data = result?.structuredContent as { success?: boolean; phase?: string; currentQuestion?: number } | undefined;
-      if (data?.success) {
-        if (data.phase) setPhase(data.phase);
-        if (data.currentQuestion !== undefined) setCurrentQ(data.currentQuestion);
-      }
+      await nextQuestion({ appId: props.appId });
       setSelectedAnswer(null);
       setLastPoints(null);
       setActionMsg("");

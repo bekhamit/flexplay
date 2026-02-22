@@ -434,7 +434,7 @@ server.tool(
     outputSchema: z.object({
       found: z.boolean(),
       appType: z.enum(["poll", "quiz"]).optional(),
-      votes: z.record(z.string(), z.record(z.string(), z.array(z.string()))).optional(),
+      votes: z.record(z.string(), z.array(z.string())).optional(),
       phase: z.string().optional(),
       currentQuestion: z.number().optional(),
       questionStartTime: z.number().nullable().optional(),

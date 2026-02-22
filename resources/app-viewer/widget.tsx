@@ -237,14 +237,7 @@ function PollView({
   };
 
   const handleNext = async () => {
-    try {
-      const result = await advanceQuestion({ appId: props.appId });
-      const data = result?.structuredContent as { success?: boolean; phase?: string; currentQuestion?: number } | undefined;
-      if (data?.success) {
-        if (data.phase) setPhase(data.phase);
-        if (data.currentQuestion !== undefined) setCurrentQ(data.currentQuestion);
-      }
-    } catch { /* silent */ }
+    await advanceQuestion({ appId: props.appId }).catch(() => {});
   };
 
   const copyCode = () => {
@@ -507,14 +500,7 @@ function QuizView({ props, sendFollowUpMessage }: { props: Props; sendFollowUpMe
   };
 
   const handleNext = async () => {
-    try {
-      const result = await nextQuestion({ appId: props.appId });
-      const data = result?.structuredContent as { success?: boolean; phase?: string; currentQuestion?: number } | undefined;
-      if (data?.success) {
-        if (data.phase) setPhase(data.phase);
-        if (data.currentQuestion !== undefined) setCurrentQ(data.currentQuestion);
-      }
-    } catch { /* silent */ }
+    await nextQuestion({ appId: props.appId }).catch(() => {});
     setSelectedAnswer(null);
     setLastPoints(null);
   };
